@@ -2,8 +2,9 @@ import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMediaUpload } from '@thebes/sdk'
 import {
-  CRM_CID, M, decodeContacts, decodeContactDeals, decodeActivities, idArg,
-  addDeal, advanceDeal, logActivity, setContactPhoto, type Contact, type Deal, type Activity,
+  CRM_CID, M, M2, decodeContacts, decodeContactDeals, decodeActivities, decodeHistory, idArg,
+  addDeal, advanceDeal, logActivity, setContactPhoto, query,
+  type Contact, type Deal, type Activity, type StageEvent,
 } from '../lib/crm-api'
 import { MEDIA_CID, fmtCents, relTime } from '../lib/config'
 import { MediaImage } from '../components/MediaImage'
@@ -38,8 +39,25 @@ export function ContactDetail() {
   }
   async function move(dealId: bigint, stage: string) {
     setErr(undefined)
-    try { await advanceDeal(dealId, stage); deals.refetch() }
+    let note = ''
+    if (stage === 'lost') {
+      const why = window.prompt('Why was it lost? Goes on the deal’s trail, permanently.')
+      if (why === null) return
+      note = why.trim()
+    }
+    try { await advanceDeal(dealId, stage, note); deals.refetch(); setTrail({}) }
     catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
+  }
+
+  // Lazily-loaded stage trail per deal (dealHistoryView).
+  const [trail, setTrail] = useState<Record<string, StageEvent[]>>({})
+  async function toggleTrail(dealId: bigint) {
+    const k = dealId.toString()
+    if (trail[k]) { setTrail((t) => { const n = { ...t }; delete n[k]; return n }); return }
+    try {
+      const r = await query(CRM_CID, M2.history, idArg(dealId))
+      setTrail((t) => ({ ...t, [k]: decodeHistory(r.reply_hex ?? r.reply ?? '') }))
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
   }
   async function changePhoto(file: File | undefined) {
     if (!file) return
@@ -101,8 +119,25 @@ export function ContactDetail() {
                         <button key={s} onClick={() => move(d.id, s)}
                           className="rounded-full px-2 py-0.5 text-xs font-semibold capitalize ring-1 ring-[var(--color-line)] hover:bg-[var(--color-paper)]">→ {s}</button>
                       ))}
+                      <button onClick={() => toggleTrail(d.id)}
+                        className="rounded-full px-2 py-0.5 text-xs font-semibold text-[var(--color-act-ink)] ring-1 ring-[var(--color-act)]/30 hover:bg-[var(--color-act)]/10">
+                        {trail[d.id.toString()] ? 'Hide trail' : 'Trail'}
+                      </button>
                     </div>
                   </div>
+                  {trail[d.id.toString()] && (
+                    <ol className="mt-3 space-y-1.5 border-t border-[var(--color-line)] pt-2" data-testid="deal-trail">
+                      {trail[d.id.toString()].map((e) => (
+                        <li key={e.seq.toString()} className="flex items-baseline gap-2 text-xs">
+                          <span className="text-ink-soft nums">{relTime(e.at)}</span>
+                          <span className="font-semibold capitalize">
+                            {e.note === 'opened' ? 'opened at lead' : <>{e.from} → {e.to}</>}
+                          </span>
+                          {e.note && e.note !== 'opened' && <span className="text-ink-soft">“{e.note}”</span>}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                 </li>
               ))}
               {deals.data?.length === 0 && <p className="text-sm text-ink-soft">No deals yet.</p>}

@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@thebes/sdk'
 import {
-  CRM_CID, M, decodeMyDeals, decodePipeline, pipelineArgs, advanceDeal,
-  type Deal, type Pipeline as Pipe,
+  CRM_CID, M, M2, decodeMyDeals, decodePipeline, decodeFunnel, decodeForecast,
+  pipelineArgs, advanceDeal,
+  type Deal, type Pipeline as Pipe, type FunnelRow, type Forecast,
 } from '../lib/crm-api'
 import { fmtCents } from '../lib/config'
+import { ConversionRiver } from '../components/ConversionRiver'
 import { STAGES, stageColor, Spinner, EmptyState, ErrorNote } from '../components/ui'
 
 const NEXT: Record<string, string[]> = {
@@ -24,18 +26,29 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
 export function PipelinePage() {
   const pipe = useQuery<Pipe | undefined>(CRM_CID, M.pipeline, pipelineArgs(false), decodePipeline)
   const deals = useQuery<Deal[]>(CRM_CID, M.myDeals, undefined, decodeMyDeals)
+  const funnel = useQuery<FunnelRow[]>(CRM_CID, M2.funnel, pipelineArgs(false), decodeFunnel)
+  const forecast = useQuery<Forecast | undefined>(CRM_CID, M2.forecast, pipelineArgs(false), decodeForecast)
 
   const [moveErr, setMoveErr] = useState<string>()
   async function move(dealId: bigint, stage: string) {
     setMoveErr(undefined)
-    try { await advanceDeal(dealId, stage); deals.refetch(); pipe.refetch() }
-    catch (e) { setMoveErr(e instanceof Error ? e.message : String(e)) }
+    let note = ''
+    if (stage === 'lost') {
+      const why = window.prompt('Why was it lost? Goes on the deal’s trail, permanently.')
+      if (why === null) return
+      note = why.trim()
+    }
+    try {
+      await advanceDeal(dealId, stage, note)
+      deals.refetch(); pipe.refetch(); funnel.refetch(); forecast.refetch()
+    } catch (e) { setMoveErr(e instanceof Error ? e.message : String(e)) }
   }
 
   if (deals.loading) return <Spinner label="Loading pipeline" />
   if (deals.error) return <ErrorNote message={deals.error} />
   const all = deals.data ?? []
   const p = pipe.data
+  const f = forecast.data
 
   if (all.length === 0) {
     return <EmptyState title="Your pipeline is empty" hint="Open a contact and add a deal — it'll appear here, movable across stages." />
@@ -43,8 +56,28 @@ export function PipelinePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-2xl font-extrabold">Pipeline</h1>
-      {pipe.error && <ErrorNote message={pipe.error} />}
+      {/* ── Hero: the book's true conversion, drawn from the on-chain trails ── */}
+      <section className="hero p-6 sm:p-8">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <p className="hero-kicker">Live from the stage trails</p>
+            <h1 className="font-display mt-2 text-3xl font-extrabold">The conversion river</h1>
+            <p className="mt-1 max-w-lg text-sm text-ink-soft">
+              Band width is the value that has ever <b>reached</b> each stage — replayed
+              from the on-chain trail, so the taper is your real funnel, not a mockup.
+              Won pools; lost drains.
+            </p>
+          </div>
+          {f && (
+            <p className="text-sm text-ink-soft nums">
+              Weighted forecast <b className="font-display text-xl text-ink">${fmtCents(f.weightedCents)}</b>
+              <span className="ml-1">of ${fmtCents(f.openCents)} open</span>
+            </p>
+          )}
+        </div>
+        <ConversionRiver funnel={funnel.data ?? []} className="mt-2 h-[300px] w-full" />
+      </section>
+
       {moveErr && <ErrorNote message={moveErr} />}
       {p && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
