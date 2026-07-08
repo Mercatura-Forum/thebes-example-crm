@@ -1,11 +1,19 @@
 # thebes-example-crm
 
 An on-chain CRM built on [Thebes Protocol](https://github.com/Mercatura-Forum/Thebes-Protocol-):
-a Motoko backend that holds contacts, a forward-only sales pipeline, and an
-activity log, and a React frontend served as certified assets. It demonstrates
-the full shape of a Thebes application — passkey sign-in, controller-gated
-admin, per-caller ownership, paginated reads, and threshold-signed on-chain
-state — in one self-contained example.
+a Motoko backend that holds contacts, a forward-only sales pipeline with
+append-only stage trails, and an immutable activity log, and a React frontend
+served as certified assets.
+
+The property this example proves: **a pipeline that cannot rewrite its past.**
+Every stage a deal has ever entered stays on its trail (with the who, the when
+and the note — lost reasons go on the record); replaying any trail from lead
+through only-legal transitions lands exactly on the booked stage, and the
+**public oracle** (`invariantReportView`) re-proves that for the whole book on
+every read. Reps see only what they own; the funnel and the weighted forecast
+are computed from the trails, not drawn by the client.
+
+Live demo: <https://memphis.mercaturaforum.com/_/raw/40115267434385/index.html>
 
 ## Architecture
 
