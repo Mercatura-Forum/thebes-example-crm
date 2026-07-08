@@ -74,8 +74,8 @@ export async function addDeal(contactId: bigint, title: string, valueCents: bigi
   await update(CRM_CID, 'addDealOrTrap', encodeArgs([{ type: 'nat', value: contactId }, { type: 'text', value: title }, { type: 'nat', value: valueCents }]))
 }
 /** Advance a deal to `stage` ("qualified"|"proposal"|"won"|"lost"). Throws on invalid transition. */
-export async function advanceDeal(dealId: bigint, stage: string) {
-  await update(CRM_CID, 'advanceDealOrTrap', encodeArgs([{ type: 'nat', value: dealId }, { type: 'text', value: stage }]))
+export async function advanceDeal(dealId: bigint, stage: string, note = '') {
+  await update(CRM_CID, 'advanceDealOrTrap', encodeArgs([{ type: 'nat', value: dealId }, { type: 'text', value: stage }, { type: 'text', value: note }]))
 }
 export async function logActivity(contactId: bigint, kind: string, body: string) {
   await update(CRM_CID, 'logActivityOrTrap', encodeArgs([{ type: 'nat', value: contactId }, { type: 'text', value: kind }, { type: 'text', value: body }]))
@@ -88,3 +88,75 @@ export async function seedDemo(): Promise<void> {
 }
 
 export { query, CRM_CID }
+
+// ── v2 surface: history, funnel, forecast, seal, oracle ──
+import { calibrate } from './chainTime'
+
+export interface StageEvent {
+  seq: bigint; dealId: bigint; from: string; to: string; by: string; at: bigint; note: string
+}
+export interface FunnelRow {
+  stage: string; count: bigint; valueCents: bigint; reachedCount: bigint; reachedValueCents: bigint
+}
+export interface Forecast {
+  weightedCents: bigint; openCents: bigint; openCount: bigint; wonCents: bigint; nowNs: bigint
+}
+export interface SealRow {
+  contacts: bigint; deals: bigint; activities: bigint; transitions: bigint; violations: bigint; checkedAt: bigint
+}
+export interface ViolationRow { rule: string; detail: string }
+
+const HISTORY_FIELDS = [
+  { name: 'seq', type: 'nat' as const }, { name: 'dealId', type: 'nat' as const },
+  { name: 'from', type: 'text' as const }, { name: 'to', type: 'text' as const },
+  { name: 'by', type: 'principal' as const }, { name: 'at', type: 'int' as const },
+  { name: 'note', type: 'text' as const },
+]
+const FUNNEL_FIELDS = [
+  { name: 'stage', type: 'text' as const }, { name: 'count', type: 'nat' as const },
+  { name: 'valueCents', type: 'nat' as const }, { name: 'reachedCount', type: 'nat' as const },
+  { name: 'reachedValueCents', type: 'nat' as const },
+]
+const FORECAST_FIELDS = [
+  { name: 'weightedCents', type: 'nat' as const }, { name: 'openCents', type: 'nat' as const },
+  { name: 'openCount', type: 'nat' as const }, { name: 'wonCents', type: 'nat' as const },
+  { name: 'nowNs', type: 'int' as const },
+]
+const SEAL_FIELDS = [
+  { name: 'contacts', type: 'nat' as const }, { name: 'deals', type: 'nat' as const },
+  { name: 'activities', type: 'nat' as const }, { name: 'transitions', type: 'nat' as const },
+  { name: 'violations', type: 'nat' as const }, { name: 'checkedAt', type: 'int' as const },
+]
+const VIOLATION_FIELDS = [{ name: 'rule', type: 'text' as const }, { name: 'detail', type: 'text' as const }]
+
+export const decodeHistory = (h: string) => decodeVecRecord(h, HISTORY_FIELDS) as unknown as StageEvent[]
+export const decodeFunnel = (h: string) => decodeVecRecord(h, FUNNEL_FIELDS) as unknown as FunnelRow[]
+export const decodeForecast = (h: string) => {
+  const rows = decodeVecRecord(h, FORECAST_FIELDS) as unknown as Forecast[]
+  if (rows.length > 0) calibrate(rows[0].nowNs)
+  return rows[0]
+}
+export const decodeSeal = (h: string) => {
+  const rows = decodeVecRecord(h, SEAL_FIELDS) as unknown as SealRow[]
+  if (rows.length > 0) calibrate(rows[0].checkedAt)
+  return rows[0]
+}
+export const decodeViolations = (h: string) => decodeVecRecord(h, VIOLATION_FIELDS) as unknown as ViolationRow[]
+
+export const M2 = {
+  history: 'dealHistoryView', funnel: 'funnelView', forecast: 'forecastView',
+  seal: 'crmSealView', invariants: 'invariantReportView',
+} as const
+
+/** Advance with a note on the record (e.g. the lost reason). Throws on an illegal transition. */
+export async function advanceDealNoted(dealId: bigint, stage: string, note: string) {
+  await update(CRM_CID, 'advanceDealOrTrap', encodeArgs([
+    { type: 'nat', value: dealId }, { type: 'text', value: stage }, { type: 'text', value: note },
+  ]))
+}
+
+/** One-shot chain-clock calibration (forecast carries nowNs). */
+export async function calibrateChainClock(): Promise<void> {
+  const r = await query(CRM_CID, 'forecastView', encodeArg({ type: 'bool', value: false }))
+  decodeForecast(r.reply_hex ?? r.reply ?? '')
+}
