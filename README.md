@@ -1,6 +1,6 @@
 # thebes-example-crm
 
-An on-chain CRM built on [Thebes Protocol](https://github.com/Mercatura-Forum/Thebes-Protocol-):
+An on-chain CRM built on [Thebes Protocol](https://thebesprotocol.com):
 a Motoko backend that holds contacts, a forward-only sales pipeline with
 append-only stage trails, and an immutable activity log, and a React frontend
 served as certified assets.
