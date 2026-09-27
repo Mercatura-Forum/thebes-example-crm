@@ -7,8 +7,8 @@ declare global {
   }
 }
 
-export const CRM_CID: number = (typeof window !== 'undefined' && window.CRM_CID) || 0
-export const MEDIA_CID: number = (typeof window !== 'undefined' && window.MEDIA_CID) || 0
+export const CRM_CID: number = (typeof window !== 'undefined' && window.CRM_CID) || 210315207987620
+export const MEDIA_CID: number = (typeof window !== 'undefined' && window.MEDIA_CID) || 116594399930788
 
 /** Deal value is in cents → grouped 2-decimal string. */
 export function fmtCents(cents: bigint | number): string {
