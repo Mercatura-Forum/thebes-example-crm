@@ -4,13 +4,9 @@ default_network = "wan"
 chain_id = 2026
 
 [networks.wan]
-validators = [
-    "http://72.62.235.133:18080",
-    "http://72.62.235.127:18080",
-    "http://72.62.235.134:18080",
-    "http://76.13.140.52:18080",
-]
-boundary = "https://memphis.mercaturaforum.com"
+# One stable public name resolves the whole validator set behind the
+# boundary — never put validator IPs here.
+gateway = "https://memphis.mercaturaforum.com"
 routing = "smart"
 
 [canisters.crm]
